@@ -12,7 +12,7 @@ const justPressed = {};
 window.addEventListener('keydown', e => {
   justPressed[e.code] = !keys[e.code];
   keys[e.code] = true;
-  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code))
+  if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code))
     e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -28,6 +28,77 @@ const wrap  = (v, max) => ((v % max) + max) % max;
 const dist  = (a, b)   => Math.hypot(a.x - b.x, a.y - b.y);
 const rand  = (min, max) => min + Math.random() * (max - min);
 const randInt = (min, max) => Math.floor(rand(min, max + 1));
+
+// ── Skins de nave ─────────────────────────────────────────────────────────────
+const SHIP_SKINS = [
+  { name: 'CLASICA', color: '#fff', shape: 'classic' },
+  { name: 'INTERCEPTOR', color: '#40dfff', shape: 'interceptor' },
+  { name: 'FENIX', color: '#ff7a40', shape: 'phoenix' },
+];
+
+let selectedSkin = 0;
+
+function drawShipSkin(skin, thrusting = false, scale = 1) {
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = skin.color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+
+  if (skin.shape === 'interceptor') {
+    ctx.moveTo(20, 0);
+    ctx.lineTo(3, -6);
+    ctx.lineTo(-4, -13);
+    ctx.lineTo(-10, -13);
+    ctx.lineTo(-7, -4);
+    ctx.lineTo(-14, 0);
+    ctx.lineTo(-7, 4);
+    ctx.lineTo(-10, 13);
+    ctx.lineTo(-4, 13);
+    ctx.lineTo(3, 6);
+  } else if (skin.shape === 'phoenix') {
+    ctx.moveTo(20, 0);
+    ctx.lineTo(3, -5);
+    ctx.lineTo(-4, -14);
+    ctx.lineTo(-9, -7);
+    ctx.lineTo(-14, -9);
+    ctx.lineTo(-9, 0);
+    ctx.lineTo(-14, 9);
+    ctx.lineTo(-9, 7);
+    ctx.lineTo(-4, 14);
+    ctx.lineTo(3, 5);
+  } else {
+    ctx.moveTo(20, 0);
+    ctx.lineTo(-12, -9);
+    ctx.lineTo(-7, 0);
+    ctx.lineTo(-12, 9);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  if (skin.shape === 'interceptor') {
+    ctx.beginPath();
+    ctx.moveTo(-2, 0);
+    ctx.lineTo(7, 0);
+    ctx.stroke();
+  } else if (skin.shape === 'phoenix') {
+    ctx.beginPath();
+    ctx.moveTo(-7, 0);
+    ctx.lineTo(6, 0);
+    ctx.stroke();
+  }
+
+  if (thrusting && Math.random() > 0.35) {
+    ctx.beginPath();
+    ctx.moveTo(-8, -4);
+    ctx.lineTo(-8 - rand(6, 14), 0);
+    ctx.lineTo(-8, 4);
+    ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
@@ -218,28 +289,7 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1.5;
-    ctx.lineJoin    = 'round';
-
-    // Silueta clásica: triángulo con muesca trasera
-    ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
-    ctx.closePath();
-    ctx.stroke();
-
-    // Llama del propulsor
-    if (this.thrusting && Math.random() > 0.35) {
-      ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
-      ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
-      ctx.stroke();
-    }
+    drawShipSkin(SHIP_SKINS[selectedSkin], this.thrusting);
 
     ctx.restore();
   }
@@ -280,7 +330,7 @@ class Particle {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles, speedItem;
 let score, lives, level;
-let state;      // 'playing' | 'dead' | 'gameover'
+let state;      // 'selecting' | 'playing' | 'dead' | 'gameover'
 let deadTimer;
 let speedSpawnTimer;
 let shootingStarSpawnTimer;
@@ -310,6 +360,10 @@ function initGame() {
   level  = 1;
   state  = 'playing';
   spawnAsteroids(4);
+}
+
+function startGame() {
+  initGame();
 }
 
 function spawnShootingStar() {
@@ -364,6 +418,15 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  if (state === 'selecting') {
+    if (pressed('ArrowLeft'))
+      selectedSkin = (selectedSkin + SHIP_SKINS.length - 1) % SHIP_SKINS.length;
+    if (pressed('ArrowRight'))
+      selectedSkin = (selectedSkin + 1) % SHIP_SKINS.length;
+    if (pressed('Space')) startGame();
+    return;
+  }
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
     particles.forEach(p => p.update(dt));
@@ -451,16 +514,7 @@ function drawLifeIcon(x, y) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth   = 1.2;
-  ctx.lineJoin    = 'round';
-  ctx.beginPath();
-  ctx.moveTo( 9,  0);
-  ctx.lineTo(-6, -5);
-  ctx.lineTo(-3,  0);
-  ctx.lineTo(-6,  5);
-  ctx.closePath();
-  ctx.stroke();
+  drawShipSkin(SHIP_SKINS[selectedSkin], false, 0.5);
   ctx.restore();
 }
 
@@ -495,9 +549,39 @@ function drawOverlay(title, sub) {
   ctx.fillText(sub, W / 2, H / 2 + 22);
 }
 
+function drawSkinSelector() {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 32px monospace';
+  ctx.fillText('ELIGE TU NAVE', W / 2, 115);
+  ctx.font = '15px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('USA ← Y → PARA ELEGIR', W / 2, 150);
+
+  const skin = SHIP_SKINS[selectedSkin];
+  ctx.save();
+  ctx.translate(W / 2, H / 2 - 15);
+  ctx.rotate(-Math.PI / 2);
+  drawShipSkin(skin, false, 3.8);
+  ctx.restore();
+
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = skin.color;
+  ctx.fillText(skin.name, W / 2, H / 2 + 95);
+  ctx.font = '16px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText(`${selectedSkin + 1} / ${SHIP_SKINS.length}`, W / 2, H / 2 + 128);
+  ctx.fillText('ESPACIO PARA COMENZAR', W / 2, H - 90);
+}
+
 function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
+
+  if (state === 'selecting') {
+    drawSkinSelector();
+    return;
+  }
 
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
@@ -522,5 +606,5 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-initGame();
+state = 'selecting';
 requestAnimationFrame(loop);
