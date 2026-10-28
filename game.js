@@ -224,6 +224,32 @@ class SpeedItem {
   }
 }
 
+// ── Ítem de escudo ──────────────────────────────────────────────────────────
+class ShieldItem {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 14;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.strokeStyle = '#8c6cff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -13);
+    ctx.lineTo(11, -8);
+    ctx.lineTo(9, 6);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(-9, 6);
+    ctx.lineTo(-11, -8);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
   constructor() { this.reset(); }
@@ -239,6 +265,7 @@ class Ship {
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.speedBoost    = 0;
+    this.shield        = false;
     this.dead          = false;
   }
 
@@ -289,6 +316,13 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
+    if (this.shield) {
+      ctx.strokeStyle = 'rgba(140, 108, 255, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 27, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     drawShipSkin(SHIP_SKINS[selectedSkin], this.thrusting);
 
     ctx.restore();
@@ -328,11 +362,12 @@ class Particle {
 }
 
 // ── Estado del juego ──────────────────────────────────────────────────────────
-let ship, bullets, asteroids, particles, speedItem;
+let ship, bullets, asteroids, particles, speedItem, shieldItem;
 let score, lives, level;
 let state;      // 'selecting' | 'playing' | 'dead' | 'gameover'
 let deadTimer;
 let speedSpawnTimer;
+let shieldSpawnTimer;
 let shootingStarSpawnTimer;
 
 function spawnAsteroids(count) {
@@ -353,7 +388,9 @@ function initGame() {
   asteroids = [];
   particles = [];
   speedItem = null;
+  shieldItem = null;
   speedSpawnTimer = 0;
+  shieldSpawnTimer = 0;
   shootingStarSpawnTimer = 0;
   score  = 0;
   lives  = 3;
@@ -377,13 +414,17 @@ function spawnShootingStar() {
 }
 
 function nextLevel() {
+  const shieldActive = ship.shield;
   level++;
   bullets   = [];
   particles = [];
   speedItem = null;
+  shieldItem = null;
   speedSpawnTimer = 0;
+  shieldSpawnTimer = 0;
   shootingStarSpawnTimer = 0;
   ship.reset();
+  ship.shield = shieldActive;
   spawnAsteroids(3 + level);
 }
 
@@ -397,6 +438,16 @@ function spawnSpeedItem() {
   speedItem = new SpeedItem(x, y);
 }
 
+function spawnShieldItem() {
+  const SAFE_DIST = 130;
+  let x, y;
+  do {
+    x = rand(0, W);
+    y = rand(0, H);
+  } while (Math.hypot(x - ship.x, y - ship.y) < SAFE_DIST);
+  shieldItem = new ShieldItem(x, y);
+}
+
 function explode(x, y, count = 8) {
   for (let i = 0; i < count; i++) particles.push(new Particle(x, y));
 }
@@ -405,7 +456,9 @@ function killShip() {
   explode(ship.x, ship.y, 14);
   ship.dead = true;
   speedItem = null;
+  shieldItem = null;
   speedSpawnTimer = 0;
+  shieldSpawnTimer = 0;
   shootingStarSpawnTimer = 0;
   lives--;
   if (lives <= 0) {
@@ -467,6 +520,20 @@ function update(dt) {
     }
   }
 
+  if (shieldItem) {
+    if (dist(ship, shieldItem) < ship.radius + shieldItem.radius) {
+      ship.shield = true;
+      shieldItem = null;
+      shieldSpawnTimer = 0;
+    }
+  } else {
+    shieldSpawnTimer += dt;
+    if (shieldSpawnTimer >= 15) {
+      spawnShieldItem();
+      shieldSpawnTimer = 0;
+    }
+  }
+
   shootingStarSpawnTimer += dt;
   if (shootingStarSpawnTimer >= 10) {
     if (!asteroids.some(a => a.shootingStar)) spawnShootingStar();
@@ -499,7 +566,15 @@ function update(dt) {
   if (ship.invincible <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
-        killShip();
+        if (ship.shield) {
+          ship.shield = false;
+          a.dead = true;
+          score += a.shootingStar ? SHOOTING_STAR_POINTS : POINTS[a.size];
+          explode(a.x, a.y, a.size * 5);
+          asteroids = asteroids.filter(other => !other.dead).concat(a.split());
+        } else {
+          killShip();
+        }
         break;
       }
     }
@@ -535,6 +610,12 @@ function drawHUD() {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#40dfff';
     ctx.fillText(`VELOCIDAD ${Math.ceil(ship.speedBoost)}s`, W - 14, 52);
+  }
+
+  if (ship.shield) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#8c6cff';
+    ctx.fillText('ESCUDO ACTIVO', W - 14, ship.speedBoost > 0 ? 76 : 52);
   }
 
 }
@@ -587,6 +668,7 @@ function draw() {
   asteroids.forEach(a => a.draw());
   bullets.forEach(b => b.draw());
   if (speedItem) speedItem.draw();
+  if (shieldItem) shieldItem.draw();
   ship.draw();
 
   drawHUD();
